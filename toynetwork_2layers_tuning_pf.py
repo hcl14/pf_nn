@@ -35,7 +35,7 @@ w = 2*np.random.random((16,100)) - 1 # we store w0 and w1 as single column to it
 
 imp = 0
 
-epochs = 60
+epochs = 25
 
 for j in xrange(epochs):
     # Feed forward through layers 0, 1, and 2
@@ -74,8 +74,10 @@ for j in xrange(epochs):
     w = np.take(w1,indices2,axis=1)
     # add uniform noises to the wights (different training speed for different layers taken into account)
     
-    C1 = 0.1
-    C2 = 0.2
+    #C1 = 0.1 # works like charm, but takes 60 iterations
+    #C2 = 0.2
+    C1 = 1*l2_error[indices[0]] # The closer we are to the solution, the lesser are the steps. Gives significant speed improvement!
+    C2 = 2*l2_error[indices[0]] # But works a bit weird sometimes (l2 error shifts instantly to the either side, weights explode, no convergence in rare occasions)
     
     #first layer
     eps1 = C1*abs(np.max(w[0:12,:])-np.min(w[0:12,:])) * (100**(-1.0/12))
