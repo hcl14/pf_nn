@@ -12,7 +12,6 @@ def row_to_arrays(col):  # we store w0, w1 as single column to iterate easily
     w1 = col[12:16].reshape((4,1))
     return w0,w1
 
-    
 X = np.array([[0,0,1],
             [0,1,1],
             [1,0,1],
@@ -54,17 +53,24 @@ for j in xrange(epochs):
     
     # Importance
     
-    imp = 1.0/l2_error # lower error gets bigger weight
+    #imp = 1.0/l2_error 
+    imp = np.divide(1.0, l2_error, where=l2_error!=0) # trying to avoid warning here, needs to be optimized
     
     # Resampling
     
     # approach 1: get area in ND around weighted ones
     
-    # select indices of the 5% weights witj largest likelihood
-    indices = np.argpartition(-imp, int(0.05*100))[:int(0.05*100)] 
+    # indices where l2 error == 0 should be taken immediately (need some more simple and robust procedure here)
+    indices = np.where(l2_error==0)[0]
+    # if there is no such ones
+    if indices.size == 0:
+        # then select indices of the 5% weights with largest likelihood 
+        indices = np.argpartition(-imp, int(0.05*100))[:int(0.05*100)] 
     
     # choose these models
     w1 = np.take(w,indices,axis=1)
+    # extract their errors
+    l2_error_chosen = np.take(l2_error,indices)
     
     # bootstrap with noise to create new sample of 100 elements located around these chosen
     
@@ -72,15 +78,18 @@ for j in xrange(epochs):
     indices2 = np.random.choice(w1.shape[1],100)
     # take elements
     w = np.take(w1,indices2,axis=1)
+    
     # add uniform noises to the wights (different training speed for different layers taken into account)
     
     #C1 = 0.1 # works like charm, but takes 60 iterations
     #C2 = 0.2
-    C1 = 1*l2_error[indices[0]] # The closer we are to the solution, the lesser are the steps. Gives significant speed improvement!
-    C2 = 2*l2_error[indices[0]] # But works a bit weird sometimes (l2 error shifts instantly to the either side, weights explode, no convergence in rare occasions)
+    
+    # min is adequate measure (we need to pay most attention to the closest ones), also it allows us to stop when we encounter zero
+    C1 = 4*np.min(l2_error_chosen) # The closer we are to the solution, the lesser are the steps. Gives significant speed improvement!
+    C2 = 6*np.min(l2_error_chosen) # But works a bit weird sometimes (l2 error shifts instantly to the either side, weights explode, no convergence in rare occasions)
     
     #first layer
-    eps1 = C1*abs(np.max(w[0:12,:])-np.min(w[0:12,:])) * (100**(-1.0/12))
+    eps1 = C1*abs(np.max(w[0:12,:])-np.min(w[0:12,:])) * (100**(-1.0/12))   # weights still explode with these parameters sometimes, if there are very different weight values on the layer
     #second layer
     eps2 = C2*abs(np.max(w[12:16,:])-np.min(w[12:16,:])) * (100**(-1.0/4))
     
