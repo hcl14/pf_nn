@@ -31,16 +31,22 @@ y = np.array([[0],
 #w1 = 2*np.random.random((4,1)) - 1
 
 w = 2*np.random.random((16,100)) - 1 # we store w0 and w1 as single column to iterate easily
+w1 = None # stored chosen models
 
 imp = 0
 
 epochs = 25
 
+eps1prev = 0 # previous values to avoid being stuck
+eps2prev = 0
+errprev = 0 
+stucked = 0 # how much we stuck
+
 for j in xrange(epochs):
     # Feed forward through layers 0, 1, and 2
     l0 = X
     
-    # lambda_r = 0.05 # regularization parameter
+    #lambda_r = 0.05 # regularization parameter
     
     l2_error = np.zeros(100)
     l1, l2 = None,None
@@ -49,7 +55,7 @@ for j in xrange(epochs):
         l1 = nonlin(np.dot(l0,w0))
         l2 = nonlin(np.dot(l1,w1))
         # calculating error with regularization
-        l2_error[i] = np.sum((y - l2)**2) #+ lambda_r*np.sum(abs(w[:,i]))  # regularization either does nothing or destroys everything! The model tends then to [0.5,0.5,0.5,0.5]
+        l2_error[i] = np.sum((y - l2)**2) # + lambda_r*(1.0/16)*np.sum(abs(w[:,i]))  # regularization either does nothing or destroys everything! The model tends then to [0.5,0.5,0.5,0.5]
     
     # Importance
     
@@ -85,27 +91,52 @@ for j in xrange(epochs):
     #C2 = 0.2
     
     # min is adequate measure (we need to pay most attention to the closest ones), also it allows us to stop when we encounter zero
-    C1 = 4*np.min(l2_error_chosen) # The closer we are to the solution, the lesser are the steps. Gives significant speed improvement!
-    C2 = 6*np.min(l2_error_chosen) # But works a bit weird sometimes (l2 error shifts instantly to the either side, weights explode, no convergence in rare occasions)
+    err = np.min(l2_error_chosen)
+    
+    C1 = 16*err # The closer we are to the solution, the lesser are the steps. Gives significant speed improvement!
+    C2 = 8*err # But works a bit weird sometimes (l2 error shifts instantly to the either side, weights explode, no convergence in rare occasions)
     
     #first layer
-    eps1 = C1*abs(np.max(w[0:12,:])-np.min(w[0:12,:])) * (100**(-1.0/12))   # weights still explode with these parameters sometimes, if there are very different weight values on the layer
+    eps1 = C1*abs(np.amax(w[0:12,:],axis=1)-np.amin(w[0:12,:],axis=1)) * (100**(-1.0/12))   # weights still explode with these parameters sometimes, if there are very different weight values on the layer
     #second layer
-    eps2 = C2*abs(np.max(w[12:16,:])-np.min(w[12:16,:])) * (100**(-1.0/4))
+    eps2 = C2*abs(np.amax(w[12:16,:],axis=1)-np.amin(w[12:16,:],axis=1)) * (100**(-1.0/4)) # if the weights across the row are approximately the same, algorithm stucks even if error is >> 0 and needs to be revitalized by adding extra noise
     
-    print 'l2_error[indices[0]], eps1, eps2: ', l2_error[indices[0]], ', ', eps1, ', ', eps2
+    #threshold values to avoid weight explosion
+    eps1[eps1 > 50] = 50
+    eps2[eps2 > 50] = 50
+    
+    #revitalizing stuck training
+    delta_eps1 = abs(eps1 - eps1prev)
+    delta_eps2 = abs(eps2 - eps2prev) #Will keepthese to maybe take into account when only one layer stops training sometimes
+    delta_errprev = abs(err - errprev)
+    
+    eps1prev = eps1  # saving previous values
+    eps2prev = eps2
+    errprev = err
+    
+    if (delta_errprev < 0.01*err): # empirical, when we need to push out network. Such step 0.01 is already too slow for particle filter 
+        print "stuck, adding +10% noise"
+        stucked += 1
+        eps1 = np.abs(np.min(w[0:12,:],axis = 1)*0.1*stucked)
+        eps2 = np.abs(np.min(w[12:16,:],axis = 1)*0.1*stucked)
+    else:
+        stucked = 0
+    #print "*",max(eps1)
+    #print "*",max(eps2)
+    
     
     if j<(epochs-1): # to avoid noising at the end
         
-        w[0:12,:] = np.add(w[0:12,:], (2*eps1)*np.random.random((12,100)) - eps1)
-        w[12:16,:] = np.add(w[12:16,:], (2*eps2)*np.random.random((4,100)) - eps2)
+        w[0:12,:] = np.add(w[0:12,:], np.multiply(np.random.random((12,100)),2*eps1.reshape((12,1))) - eps1.reshape((12,1)))
+        w[12:16,:] = np.add(w[12:16,:], np.multiply(np.random.random((4,100)),2*eps2.reshape((4,1))) - eps2.reshape((4,1)))
+    
+    print 'l2_error: ', np.min(l2_error_chosen)
     
 
 print "Output After Training:"
-# select index that correspond to the smallest error:
-ind = np.argmax(imp)
+# select index that correspond to the smallest error and
 # propagate to get result:
-w0,w1 = row_to_arrays(w[:,ind])
+w0,w1 = row_to_arrays(w1[:,np.argmin(l2_error_chosen)])
 l1 = nonlin(np.dot(l0,w0))
 l2 = nonlin(np.dot(l1,w1))
 
