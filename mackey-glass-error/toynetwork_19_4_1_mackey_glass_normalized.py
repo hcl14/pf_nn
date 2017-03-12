@@ -28,7 +28,7 @@ f = open('training.csv', 'rt')
 #reader = csv.reader(f)
 result = [row for row in csv.reader(f, delimiter=',')]
 X1 = np.array(result).astype('float64')
-X1 = X1/np.max(X1)
+X1 = X1/1.5
 
 print X1.shape
 
@@ -186,7 +186,7 @@ print "Output After Training:"
 f = open('validation.csv', 'rt')
 result = [row for row in csv.reader(f, delimiter=',')]
 X2 = np.array(result).astype('float64')
-X2 = X2/np.max(X2)
+X2 = X2/1.5
 print 'validation points found: ', X2.shape[1]
 
 
