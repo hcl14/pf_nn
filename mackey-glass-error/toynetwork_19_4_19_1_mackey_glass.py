@@ -8,10 +8,17 @@ def nonlin(x,deriv=False):
 
 	return 1/(1+np.exp(-x))
     
-def row_to_arrays(col,l1_num,l2_num):  # we store w0, w1 as single column to iterate easily
+def row_to_arrays(col,l1_num,l2_num,l3_num):  # we store w0, w1 as single column to iterate easily
     w0 = col[0:l1_num*l2_num].reshape((l1_num,l2_num))
-    w1 = col[l1_num*l2_num:(l1_num*l2_num+l2_num)].reshape((l2_num,1))
-    return w0,w1
+    w1 = col[l1_num*l2_num:(l1_num*l2_num+l2_num*l3_num)].reshape((l2_num,l3_num))
+    w2 = col[(l1_num*l2_num+l2_num*l3_num):(l1_num*l2_num+l2_num*l3_num+l3_num)].reshape((l3_num,1))
+    return w0,w1,w2
+
+def get_layers(col,l1_num,l2_num,l3_num):
+    w0 = col[0:l1_num*l2_num,:]
+    w1 = col[l1_num*l2_num:(l1_num*l2_num+l2_num*l3_num),:]
+    w2 = col[(l1_num*l2_num+l2_num*l3_num):(l1_num*l2_num+l2_num*l3_num+l3_num),:]
+    return w0,w1,w2
 
 #X = np.array([[0,0,1],
 #            [0,1,1],
@@ -51,17 +58,19 @@ np.random.seed(1) # this random seed corresponds to the correct convergence, oth
 # No. of weights = 6*3 + 3*1 = 18 + 3 = 21
 
 l1_num = 19 # neurons in first layer
-l2_num = 4 # neurons in second layer
-w = 2*np.random.random((l1_num*l2_num+l2_num,100)) - 1 # we store w0 and w1 as single column to iterate easily
+l2_num = 19 # neurons in second layer
+l3_num = 19 #neurons for third layer
+w = 2*np.random.random((l1_num*l2_num+l2_num*l3_num+l3_num,100)) - 1 # we store w0 and w1 as single column to iterate easily
 w_1 = None # stored chosen models
 
 imp = 0
 
-epochs = 20
+epochs = 150
 
 eps1prev = 0 # previous values to avoid being stuck
 eps2prev = 0
-errprev = 0 
+eps3prev = 0
+errprev = 1 
 stucked = 0 # how much we stuck
 
 for j in xrange(epochs):
@@ -91,11 +100,12 @@ for j in xrange(epochs):
         l2_error = np.zeros(100)
         l1, l2 = None,None
         for i in range(100):
-            w0,w1 = row_to_arrays(w[:,i],l1_num,l2_num)
+            w0,w1,w2 = row_to_arrays(w[:,i],l1_num,l2_num,l3_num)
             l1 = nonlin(np.dot(l0,w0))
             l2 = nonlin(np.dot(l1,w1))
+            l3 = nonlin(np.dot(l2,w2))
             # calculating error with regularization
-            l2_error[i] = np.sum((y - l2)**2) # + lambda_r*(1.0/16)*np.sum(abs(w[:,i]))  # regularization either does nothing or destroys everything! The model tends then to [0.5,0.5,0.5,0.5]
+            l2_error[i] = np.sum((y - l3)**2) # + lambda_r*(1.0/16)*np.sum(abs(w[:,i]))  # regularization either does nothing or destroys everything! The model tends then to [0.5,0.5,0.5,0.5]
         
         # add cumulative error
         l2_cumulative_errors += l2_error
@@ -139,34 +149,45 @@ for j in xrange(epochs):
     # min is adequate measure (we need to pay most attention to the closest ones), also it allows us to stop when we encounter zero
     err = np.min(l2_error_chosen)
     
-    C1 = 0.2*err # The closer we are to the solution, the lesser are the steps. Gives significant speed improvement!
-    C2 = 0.4*err # But works a bit weird sometimes (l2 error shifts instantly to the either side, weights explode, no convergence in rare occasions)
+   # C1 = 0.4*err # The closer we are to the solution, the lesser are the steps. Gives significant speed improvement!
+   # C2 = 0.2*err # But works a bit weird sometimes (l2 error shifts instantly to the either side, weights explode, no convergence in rare occasions)
+   # C3 = 0.1*err
+    C1 = 0.4*err
+    C2 = 0.2*err
+    C3 = 0.1*err
+    
+    w0,w1,w2 = get_layers(w,l1_num,l2_num,l3_num)
     
     #first layer
-    eps1 = C1*abs(np.amax(w[0:l1_num*l2_num,:],axis=1)-np.amin(w[0:l1_num*l2_num,:],axis=1)) * (100**(-1.0/l1_num*l2_num))   # weights still explode with these parameters sometimes, if there are very different weight values on the layer
+    eps1 = C1*abs(np.amax(w0,axis=1)-np.amin(w0,axis=1)) * (100**(-1.0/l1_num*l2_num))   # weights still explode with these parameters sometimes, if there are very different weight values on the layer
     #second layer
-    eps2 = C2*abs(np.amax(w[l1_num*l2_num:(l1_num*l2_num+l2_num),:],axis=1)-np.amin(w[l1_num*l2_num:(l1_num*l2_num+l2_num),:],axis=1)) * (100**(-1.0/l2_num)) # if the weights across the row are approximately the same, algorithm stucks even if error is >> 0 and needs to be revitalized by adding extra noise
+    eps2 = C2*abs(np.amax(w1,axis=1)-np.amin(w1,axis=1)) * (100**(-1.0/l2_num*l3_num)) # if the weights across the row are approximately the same, algorithm stucks even if error is >> 0 and needs to be revitalized by adding extra noise
+    eps3 = C3*abs(np.amax(w2,axis=1)-np.amin(w2,axis=1)) * (100**(-1.0/l3_num))
     
     #threshold values to avoid weight explosion
     eps1[eps1 > 50] = 50
     eps2[eps2 > 50] = 50
+    eps3[eps3 > 50] = 50
     
     #revitalizing stuck training
     delta_eps1 = abs(eps1 - eps1prev)
     delta_eps2 = abs(eps2 - eps2prev) #Will keepthese to maybe take into account when only one layer stops training sometimes
-    delta_errprev = abs(err - errprev)
+    delta_eps3 = abs(eps3 - eps3prev)
+    delta_errprev = err/errprev
     
     eps1prev = eps1  # saving previous values
     eps2prev = eps2
+    eps3prev = eps3
     errprev = err
     
-    #if (delta_errprev < 0.01*err): # empirical, when we need to push out network. Such step 0.01 is already too slow for particle filter 
-    #    print "stuck, adding +10% noise"
-    #    stucked += 1
-    #    eps1 = np.abs(np.min(w[0:18,:],axis = 1)*0.1*stucked)
-    #    eps2 = np.abs(np.min(w[18:21,:],axis = 1)*0.1*stucked)
-    #else:
-    #    stucked = 0
+    if ((delta_errprev > 0.99) and (delta_errprev < 1)): # empirical, when we need to push out network. Such step 0.01 is already too slow for particle filter 
+        print "stuck, adding +10% noise"
+        stucked += 1
+        eps1 = np.abs(np.min(w0,axis = 1)*0.1*stucked)
+        eps2 = np.abs(np.min(w1,axis = 1)*0.1*stucked)
+        eps3 = np.abs(np.min(w2,axis = 1)*0.1*stucked)
+    else:
+        stucked = 0
     
     #print "*",max(eps1)
     #print "*",max(eps2)
@@ -174,8 +195,11 @@ for j in xrange(epochs):
     
     if j<(epochs-1): # to avoid noising at the end
         
-        w[0:l1_num*l2_num,:] = np.add(w[0:l1_num*l2_num,:], np.multiply(np.random.random((l1_num*l2_num,100)),2*eps1.reshape((l1_num*l2_num,1))) - eps1.reshape((l1_num*l2_num,1)))
-        w[l1_num*l2_num:(l1_num*l2_num+l2_num),:] = np.add(w[l1_num*l2_num:(l1_num*l2_num+l2_num),:], np.multiply(np.random.random((l2_num,100)),2*eps2.reshape((l2_num,1))) - eps2.reshape((l2_num,1)))
+        w0,w1,w2 = get_layers(w,l1_num,l2_num,l3_num)
+        
+        w[0:l1_num*l2_num,:] = np.add(w0, np.multiply(np.random.random((l1_num*l2_num,100)),2*eps1.reshape((l1_num*l2_num,1))) - eps1.reshape((l1_num*l2_num,1)))
+        w[l1_num*l2_num:(l1_num*l2_num+l2_num*l3_num),:] = np.add(w1, np.multiply(np.random.random((l2_num*l3_num,100)),2*eps2.reshape((l2_num*l3_num,1))) - eps2.reshape((l2_num*l3_num,1)))
+        w[(l1_num*l2_num+l2_num*l3_num):(l1_num*l2_num+l2_num*l3_num+l3_num),:] = np.add(w2, np.multiply(np.random.random((l3_num,100)),2*eps3.reshape((l3_num,1))) - eps3.reshape((l3_num,1)))
     
     print 'l2_error: ', err, '( MSE per batch: ', np.round((err+0.0)/num_batches,decimals=3), ')'
     
@@ -203,13 +227,14 @@ print inputs
 # start predicting on validation data
 for batch_count in range(X2.shape[1]):
 #for batch_count in range(25):
-    w0,w1 = row_to_arrays(w_1[:,model_ind],l1_num,l2_num)
+    w0,w1,w2 = row_to_arrays(w_1[:,model_ind],l1_num,l2_num,l3_num)
     l1 = nonlin(np.dot(inputs,w0))
     l2 = nonlin(np.dot(l1,w1))
+    l3 = nonlin(np.dot(l2,w2))
     # add prediction to set
-    predictions[batch_count] = l2
+    predictions[batch_count] = l3
     # add prediction and shift input set
-    inputs = np.hstack((inputs,l2))
+    inputs = np.hstack((inputs,l3))
     inputs = np.delete(inputs, 0)
     inputs = inputs.reshape((1,l1_num))
 
