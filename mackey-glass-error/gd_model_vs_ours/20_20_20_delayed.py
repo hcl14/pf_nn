@@ -109,7 +109,7 @@ w_1 = None # stored chosen models
 
 imp = 0
 
-epochs = 50
+epochs = 300
 
 eps1prev = 0 # previous values to avoid being stuck
 eps2prev = 0
