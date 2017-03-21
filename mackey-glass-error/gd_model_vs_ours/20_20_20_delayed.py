@@ -1,0 +1,312 @@
+import csv
+import numpy as np
+import matplotlib.pyplot as plt
+
+def nonlin(x,deriv=False):
+	if(deriv==True):
+	    return x*(1-x)
+
+	#return 1/(1+np.exp(-x))
+	return np.tanh(x)
+    
+def row_to_arrays(col,l1_num,l2_num,l3_num):  # we store w0, w1 as single column to iterate easily
+    w0 = col[0:l1_num*l2_num].reshape((l1_num,l2_num))
+    w1 = col[l1_num*l2_num:(l1_num*l2_num+l2_num*l3_num)].reshape((l2_num,l3_num))
+    w2 = col[(l1_num*l2_num+l2_num*l3_num):(l1_num*l2_num+l2_num*l3_num+l3_num)].reshape((l3_num,1))
+    return w0,w1,w2
+
+def get_layers(col,l1_num,l2_num,l3_num):
+    w0 = col[0:l1_num*l2_num,:]
+    w1 = col[l1_num*l2_num:(l1_num*l2_num+l2_num*l3_num),:]
+    w2 = col[(l1_num*l2_num+l2_num*l3_num):(l1_num*l2_num+l2_num*l3_num+l3_num),:]
+    return w0,w1,w2
+
+#X = np.array([[0,0,1],
+#            [0,1,1],
+#            [1,0,1],
+#            [1,1,1]])
+                
+#y = np.array([[0],
+#			[1],
+#			[1],
+#			[0]])
+
+# read treaining data
+f = open('training.csv', 'rt')
+#reader = csv.reader(f)
+result = [row for row in csv.reader(f, delimiter=',')]
+X1 = np.array(result).astype('float64')
+X1 = X1/1.5
+
+print X1.shape
+
+num_batches = np.int(X1.shape[1]-1)
+
+print 'batches found: ', num_batches
+
+# choose one first window
+#X = X1[0,0:6].reshape((1,6)).astype('float64')
+#y = X1[0,6].astype('float64')
+
+
+num_particles = 1000 # number of particles to be propagated
+
+
+np.random.seed(15) # this random seed corresponds to the correct convergence, otherwise the model is very likely to end in local minima
+
+# Sampling: initialize num_particles different weight vectors from continuous uniform distribution (num_particles models)
+
+# randomly initialize our weights with mean 0 for num_particles models
+
+# Layers: 6, 3, 1
+# No. of weights = 6*3 + 3*1 = 18 + 3 = 21
+
+l1_window = 20 #total moving window
+#subset = [0,6,12,18]#,19,19+6,19+12,19+18]
+subset = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
+l1_num = 20 # neurons in first layer
+l2_num = 20 # neurons in second layer
+l3_num = 20 #neurons for third layer
+
+# w = 2*np.random.random((l1_num*l2_num+l2_num*l3_num+l3_num,num_particles)) - 1 # we store w0 and w1 as single column to iterate easily
+
+# initializing weights according to the number of input connections and CLT
+w = 2*np.zeros((l1_num*l2_num+l2_num*l3_num+l3_num,num_particles))
+
+#range_i = 1.0/np.sqrt(1) # just for convenience of editing
+#
+#w[0:l1_num*l2_num,:] = (2*np.random.random((l1_num*l2_num,num_particles)) - 1)*range_i
+#
+#range_i = 1.0/np.sqrt(l1_num)
+#
+#w[l1_num*l2_num:(l1_num*l2_num+l2_num*l3_num),:] = (2*np.random.random((l2_num*l3_num,num_particles)) - 1)*range_i
+#
+#range_i = 1.0/np.sqrt(l2_num)
+#
+#w[(l1_num*l2_num+l2_num*l3_num):(l1_num*l2_num+l2_num*l3_num+l3_num),:] = (2*np.random.random((l3_num,num_particles)) - 1)*range_i
+
+n_1 = l1_num
+n_2 = l1_num*l2_num
+n_3 = l2_num*l3_num
+n_4 = l3_num
+
+range_i = np.sqrt(6)/np.sqrt(n_1+n_2) # just for convenience of editing
+
+w[0:l1_num*l2_num,:] = (2*np.random.random((l1_num*l2_num,num_particles)) - 1)*range_i
+
+range_i = np.sqrt(6)/np.sqrt(n_2+n_3)
+
+w[l1_num*l2_num:(l1_num*l2_num+l2_num*l3_num),:] = (2*np.random.random((l2_num*l3_num,num_particles)) - 1)*range_i
+
+range_i = np.sqrt(6)/np.sqrt(n_3+n_4)
+
+w[(l1_num*l2_num+l2_num*l3_num):(l1_num*l2_num+l2_num*l3_num+l3_num),:] = (2*np.random.random((l3_num,num_particles)) - 1)*range_i
+
+
+
+
+w_1 = None # stored chosen models
+
+imp = 0
+
+epochs = 50
+
+eps1prev = 0 # previous values to avoid being stuck
+eps2prev = 0
+eps3prev = 0
+errprev = 1 
+stucked = 0 # how much we stuck
+
+for j in xrange(epochs):
+    # Feed forward through layers 0, 1, and 2
+    
+    
+    #lambda_r = 0.05 # regularization parameter
+    
+    
+    # propagate this num_particles models on every batch element
+    # and then choose the one that gives minimal cumulative l2 error for all the batches
+    
+    # define the vector of cumulative error over all batches for all num_particles models
+    l2_cumulative_errors = np.zeros(num_particles)
+    # single batch l2_error for num_particles models
+    l2_error = np.zeros(num_particles)
+    
+    # apply this num_particles models over all batches
+    for batch_count in range(num_batches-l1_window): # 0.. num_batches-l1_num -1 
+        # select current batch
+        #l0 = X1[0,batch_count:(batch_count+l1_num)].astype('float64')
+        
+        #select moving window
+        l0 = X1[0,batch_count:(batch_count+l1_window)].astype('float64')
+        #select 1,7,13,19
+        l0 = l0[subset]
+        
+        y = X1[0,(batch_count+l1_window)].astype('float64')
+        y = y.reshape((1,1))
+        l0 = l0.reshape((1,l1_num))
+
+        # compute error for current num_particles models
+        l2_error = np.zeros(num_particles)
+        l1, l2 = None,None
+        for i in range(num_particles):
+            w0,w1,w2 = row_to_arrays(w[:,i],l1_num,l2_num,l3_num)
+            l1 = nonlin(np.dot(l0,w0))
+            l2 = nonlin(np.dot(l1,w1))
+            l3 = nonlin(np.dot(l2,w2))
+            # calculating error with regularization
+            l2_error[i] = np.sum((y - l3)**2) # + lambda_r*(1.0/16)*np.sum(abs(w[:,i]))  # regularization either does nothing or destroys everything! The model tends then to [0.5,0.5,0.5,0.5]
+        
+        # add cumulative error
+        l2_cumulative_errors += l2_error
+    
+    # for further simplicity
+    l2_error = l2_cumulative_errors
+    
+    # Importance
+    
+    #imp = 1.0/l2_error 
+    imp = np.divide(1.0, l2_error, where=l2_error!=0) # trying to avoid warning here, needs to be optimized
+    
+    # Resampling
+    
+    # approach 1: get area in ND around weighted ones
+    
+    # indices where l2 error == 0 should be taken immediately (need some more simple and robust procedure here)
+    indices = np.where(l2_error==0)[0]
+    # if there is no such ones
+    if indices.size == 0:
+        # then select indices of the 5% weights with largest likelihood 
+        indices = np.argpartition(-imp, int(0.05*num_particles))[:int(0.05*num_particles)] 
+    
+    # choose these models
+    w_1 = np.take(w,indices,axis=1)
+    # extract their errors
+    l2_error_chosen = np.take(l2_error,indices)
+    
+    # bootstrap with noise to create new sample of num_particles elements located around these chosen
+    
+    # bootstrap - sample indices with replacement
+    indices2 = np.random.choice(w_1.shape[1],num_particles)
+    # take elements
+    w = np.take(w_1,indices2,axis=1)
+    
+    # add uniform noises to the wights (different training speed for different layers taken into account)
+        
+    # min is adequate measure (we need to pay most attention to the closest ones), also it allows us to stop when we encounter zero
+    err = np.min(l2_error_chosen)
+    
+   # C1 = 0.4*err # The closer we are to the solution, the lesser are the steps. Gives significant speed improvement!
+   # C2 = 0.2*err # But works a bit weird sometimes (l2 error shifts instantly to the either side, weights explode, no convergence in rare occasions)
+   # C3 = 0.1*err
+    C1 = 0.5*err
+    C2 = 0.25*err
+    C3 = 0.125*err
+    
+    w0,w1,w2 = get_layers(w,l1_num,l2_num,l3_num)
+   
+    
+    #first layer
+    eps1 = C1*abs(np.amax(w0,axis=1)-np.amin(w0,axis=1)) * (num_particles**(-1.0/l1_num*l2_num))   
+    #second layer
+    eps2 = C2*abs(np.amax(w1,axis=1)-np.amin(w1,axis=1)) * (num_particles**(-1.0/l2_num*l3_num)) # if the weights across the row are approximately the same, algorithm stucks even if error is >> 0 and needs to be revitalized by adding extra noise
+    eps3 = C3*abs(np.amax(w2,axis=1)-np.amin(w2,axis=1)) * (num_particles**(-1.0/l3_num))
+    
+    #threshold values to avoid weight explosion
+    eps1[eps1 > 50] = 50
+    eps2[eps2 > 50] = 50
+    eps3[eps3 > 50] = 50
+    
+    #revitalizing stuck training
+    delta_eps1 = abs(eps1 - eps1prev)
+    delta_eps2 = abs(eps2 - eps2prev) #Will keepthese to maybe take into account when only one layer stops training sometimes
+    delta_eps3 = abs(eps3 - eps3prev)
+    delta_errprev = err/errprev
+    
+    eps1prev = eps1  # saving previous values
+    eps2prev = eps2
+    eps3prev = eps3
+    errprev = err
+    
+    if ((delta_errprev > 0.99) and (delta_errprev < 1)): # empirical, when we need to push out network. Such step 0.01 is already too slow for particle filter 
+        print "stuck, adding +10% noise"
+        stucked += 1
+        eps1 = np.max(np.abs(w0),axis = 1)*0.1*stucked
+        eps2 = np.max(np.abs(w1),axis = 1)*0.1*stucked
+        eps3 = np.max(np.abs(w2),axis = 1)*0.1*stucked
+    else:
+        stucked = 0
+    
+    #print "*",max(eps1)
+    #print "*",max(eps2)
+    
+    
+    if j<(epochs-1): # to avoid noising at the end
+        
+        w0,w1,w2 = get_layers(w,l1_num,l2_num,l3_num)
+        
+        # adding noise to weights within the eps-defined intervals
+        
+        w[0:l1_num*l2_num,:] = np.add(w0, np.multiply(np.random.random((l1_num*l2_num,num_particles)),2*eps1.reshape((l1_num*l2_num,1))) - eps1.reshape((l1_num*l2_num,1)))
+        w[l1_num*l2_num:(l1_num*l2_num+l2_num*l3_num),:] = np.add(w1, np.multiply(np.random.random((l2_num*l3_num,num_particles)),2*eps2.reshape((l2_num*l3_num,1))) - eps2.reshape((l2_num*l3_num,1)))
+        w[(l1_num*l2_num+l2_num*l3_num):(l1_num*l2_num+l2_num*l3_num+l3_num),:] = np.add(w2, np.multiply(np.random.random((l3_num,num_particles)),2*eps3.reshape((l3_num,1))) - eps3.reshape((l3_num,1)))
+        
+    print 'l2_error: ', err, '( MSE per batch: ', np.round((err+0.0)/num_batches,decimals=3), ')'
+    
+
+print "Output After Training:"
+
+# Read validation data
+f = open('validation.csv', 'rt')
+result = [row for row in csv.reader(f, delimiter=',')]
+X2 = np.array(result).astype('float64')
+X2 = X2/1.5
+print 'validation points found: ', X2.shape[1]
+
+
+# select index that correspond to the smallest error and
+# propagate to get result:
+model_ind = np.argmin(l2_error_chosen)
+
+#prepare predictions set
+predictions = np.zeros(X2.shape[1])
+
+# first values from testing set
+inputs = (X1[0,(X1.shape[1]-l1_window):(X1.shape[1])].astype('float64')).reshape((1,l1_window))
+print inputs
+# start predicting on validation data
+for batch_count in range(X2.shape[1]):
+#for batch_count in range(25):
+    w0,w1,w2 = row_to_arrays(w_1[:,model_ind],l1_num,l2_num,l3_num)
+    
+    l0 = inputs[0,subset].reshape((1,l1_num))
+    
+    l1 = nonlin(np.dot(l0,w0))
+    l2 = nonlin(np.dot(l1,w1))
+    l3 = nonlin(np.dot(l2,w2))
+    # add prediction to set
+    predictions[batch_count] = l3
+    # add prediction and shift input set
+    inputs = np.hstack((inputs,l3))
+    inputs = np.delete(inputs, 0)
+    inputs = inputs.reshape((1,l1_window))
+
+#print np.round(l2,decimals=3)
+
+#print 'real: ', y, 'err: ', np.sum((y - l2)**2)
+
+
+#plot data
+# Set figure width to 12 and height to 9
+fig_size = plt.rcParams["figure.figsize"]
+fig_size[0] = 12
+fig_size[1] = 6
+plt.rcParams["figure.figsize"] = fig_size
+plt.plot(range(X1.shape[1]),X1.ravel(),c='black', label='Data')
+plt.plot(range(X1.shape[1]),X1.ravel(),'.',c='black', label='Data')
+plt.plot(range(X1.shape[1],(X1.shape[1]+X2.shape[1])),X2.ravel(),c='blue', label='Data')
+plt.plot(range(X1.shape[1],(X1.shape[1]+X2.shape[1])),X2.ravel(),'.',c='blue', label='Data')
+plt.plot(range(X1.shape[1],(X1.shape[1]+X2.shape[1])),predictions,c='green', label='Data')
+plt.plot(range(X1.shape[1],(X1.shape[1]+X2.shape[1])),predictions,'.',c='green', label='Data')
+
+plt.show()
